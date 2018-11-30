@@ -104,11 +104,18 @@ struct name {								\
 
 struct event;
 
+
+/**
+ * event 的回调事件结构
+*/
 struct event_callback {
+	/* event_callback 类型的双向链表  */
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags;
+	/* 优先级 */
 	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
 	ev_uint8_t evcb_closure;
+	/* 具体的回调函数 */
 	/* allows us to adopt for different types of events */
         union {
 		void (*evcb_callback)(evutil_socket_t, short, void *);
@@ -131,6 +138,9 @@ struct event_base;
  * 辅助选项：EV_PERSIST，表明是一个永久事件
 */
 struct event {
+	/**
+	 * event的回调函数，被ev_base调用，执行事件处理程序
+	 */
 	struct event_callback ev_evcallback;
 
 	/* 管理超时事件的双向链表 */
@@ -139,22 +149,24 @@ struct event {
 		int min_heap_idx;
 	} ev_timeout_pos;
 
-	/* event 关联的 fd */
+	/* 对于 IO 事件，ev_fd是绑定的描述符，对于 signal 事件，ev_fd 是信号 */
 	evutil_socket_t ev_fd;
 
 	short ev_events;
 	short ev_res;		/* result passed to event callback */
-
+ 
+	/* 关联的 event_base */
 	struct event_base *ev_base;
 
+	/* 只能是 io 事件或 signal 事件中的一种 */
 	union {
-		/* used for io events */
+		/* io 事件的双向链表 */
 		struct {
 			LIST_ENTRY (event) ev_io_next;
 			struct timeval ev_timeout;
 		} ev_io;
 
-		/* used by signal events */
+		/* 信号事件的双向链表 */
 		struct {
 			LIST_ENTRY (event) ev_signal_next;
 			short ev_ncalls;

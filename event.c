@@ -3464,6 +3464,10 @@ event_queue_insert_timeout(struct event_base *base, struct event *ev)
 	}
 }
 
+
+/**
+ * 取出待激活事件列表中的事件，放到激活事件链表中
+*/
 static void
 event_queue_make_later_events_active(struct event_base *base)
 {
@@ -3471,6 +3475,7 @@ event_queue_make_later_events_active(struct event_base *base)
 	EVENT_BASE_ASSERT_LOCKED(base);
 
 	while ((evcb = TAILQ_FIRST(&base->active_later_queue))) {
+		/* 将 active_later_queue 中 */
 		TAILQ_REMOVE(&base->active_later_queue, evcb, evcb_active_next);
 		evcb->evcb_flags = (evcb->evcb_flags & ~EVLIST_ACTIVE_LATER) | EVLIST_ACTIVE;
 		EVUTIL_ASSERT(evcb->evcb_pri < base->nactivequeues);
