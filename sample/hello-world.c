@@ -68,8 +68,10 @@ main(int argc, char **argv)
 		return 1;
 	}
 
+	//根据 event_base 创建一个信号事件
 	signal_event = evsignal_new(base, SIGINT, signal_cb, (void *)base);
 
+	//将信号事件加入到 event 中
 	if (!signal_event || event_add(signal_event, NULL)<0) {
 		fprintf(stderr, "Could not create/add a signal event!\n");
 		return 1;

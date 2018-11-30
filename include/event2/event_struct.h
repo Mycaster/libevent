@@ -120,14 +120,26 @@ struct event_callback {
 };
 
 struct event_base;
+
+
+/**
+ * 事件结构。
+ * event关注的事件类型，它可以是以下3种类型：
+ * I/O事件： EV_WRITE和EV_READ
+ * 定时事件：EV_TIMEOUT
+ * 信号：    EV_SIGNAL
+ * 辅助选项：EV_PERSIST，表明是一个永久事件
+*/
 struct event {
 	struct event_callback ev_evcallback;
 
-	/* for managing timeouts */
+	/* 管理超时事件的双向链表 */
 	union {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
 		int min_heap_idx;
 	} ev_timeout_pos;
+
+	/* event 关联的 fd */
 	evutil_socket_t ev_fd;
 
 	short ev_events;

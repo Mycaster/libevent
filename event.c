@@ -1810,6 +1810,9 @@ event_dispatch(void)
 	return (event_loop(0));
 }
 
+/**
+ * 进入事件循环处理中
+*/
 int
 event_base_dispatch(struct event_base *event_base)
 {
@@ -1918,6 +1921,10 @@ event_loop(int flags)
 	return event_base_loop(current_base, flags);
 }
 
+
+/**
+ * 进入无限循环，等待事件
+*/
 int
 event_base_loop(struct event_base *base, int flags)
 {
@@ -1930,6 +1937,10 @@ event_base_loop(struct event_base *base, int flags)
 	 * as we invoke user callbacks. */
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
 
+	/**
+	 * event_base_loop 在一个进程中只可能调用一次。
+	 * base->running_loop 初始化为0，因此该逻辑永远不可能运行到，这里加个日志
+	*/
 	if (base->running_loop) {
 		event_warnx("%s: reentrant invocation.  Only one event_base_loop"
 		    " can run on each event_base at once.", __func__);
@@ -1938,9 +1949,11 @@ event_base_loop(struct event_base *base, int flags)
 	}
 
 	base->running_loop = 1;
-
+	//清除定时器中的时间
 	clear_time_cache(base);
-
+	/**
+	 * 判断是否有设置信号，有的话把 event_base 中的信号事件copy到另外一个 event_base* evsig_base 中单独管理
+	 * */
 	if (base->sig.ev_signal_added && base->sig.ev_n_signals_added)
 		evsig_set_base_(base);
 
@@ -1964,8 +1977,10 @@ event_base_loop(struct event_base *base, int flags)
 		if (base->event_break) {
 			break;
 		}
-
 		tv_p = &tv;
+		/*
+		* 检查超时事件
+		*/
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
 			timeout_next(base, &tv_p);
 		} else {
@@ -1984,6 +1999,9 @@ event_base_loop(struct event_base *base, int flags)
 			goto done;
 		}
 
+		/**
+		 * 将所有的就绪事件，放入到激活链表中，
+		*/
 		event_queue_make_later_events_active(base);
 
 		clear_time_cache(base);
@@ -1998,9 +2016,14 @@ event_base_loop(struct event_base *base, int flags)
 		}
 
 		update_time_cache(base);
-
+		/**
+		 * 处理定时器的超时事件
+		*/
 		timeout_process(base);
 
+		/**
+		 * 对激活链表中的事件，调用事件的回调函数执行事件处理；
+		*/
 		if (N_ACTIVE_CALLBACKS(base)) {
 			int n = event_process_active(base);
 			if ((flags & EVLOOP_ONCE)
@@ -2105,6 +2128,11 @@ event_base_once(struct event_base *base, evutil_socket_t fd, short events,
 	return (0);
 }
 
+/*
+* 将 event 和 事件管理器 event_base 关联起来。
+* event_base 决定各个事件的调度行为，而 event 是定义事件触发之后的具体行为。
+* 一个 event_base 可以关联多个 event .
+*/
 int
 event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, short events, void (*callback)(evutil_socket_t, short, void *), void *arg)
 {
@@ -2117,11 +2145,14 @@ event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, shor
 		event_debug_assert_socket_nonblocking_(fd);
 	event_debug_assert_not_added_(ev);
 
+	//event 绑定其所属的 event_base
 	ev->ev_base = base;
-
+	//event 的回调函数和函数参数
 	ev->ev_callback = callback;
 	ev->ev_arg = arg;
+	//event 关联的 fd
 	ev->ev_fd = fd;
+	//事件类型， 比如 read/write/close...
 	ev->ev_events = events;
 	ev->ev_res = 0;
 	ev->ev_flags = EVLIST_INIT;
@@ -2144,8 +2175,10 @@ event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, shor
 		}
 	}
 
+	//初始化该 event 的小根堆，主要用于管理定时器时间
 	min_heap_elem_init_(ev);
 
+	//事件的优先级，默认放在事件管理器中活跃事件的中部
 	if (base != NULL) {
 		/* by default, we put new events into the middle priority */
 		ev->ev_pri = base->nactivequeues / 2;
