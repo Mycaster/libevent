@@ -2130,7 +2130,7 @@ event_base_once(struct event_base *base, evutil_socket_t fd, short events,
 
 /*
 * 将 event 和 事件管理器 event_base 关联起来。
-* event_base 决定各个事件的调度行为，而 event 是定义事件触发之后的具体行为。
+* event_base 决定各个事件的调度行为，而 event 是定义具体的事件，其中包括触发之后的回调行为。
 * 一个 event_base 可以关联多个 event .
 */
 int
@@ -2509,6 +2509,9 @@ event_get_priority(const struct event *ev)
 	return ev->ev_pri;
 }
 
+/**
+ * 将一个事件加入到 event_base的map 中
+*/
 int
 event_add(struct event *ev, const struct timeval *tv)
 {
@@ -2650,7 +2653,8 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 		return (-1);
 	}
 
-	/*
+	/**
+	 * 先将最小堆预先扩容，准备好插入事件
 	 * prepare for timeout insertion further below, if we get a
 	 * failure on any step, we should not change any state.
 	 */

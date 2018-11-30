@@ -144,6 +144,8 @@ HT_HEAD(event_io_map, event_map_entry);
 #define event_io_map event_signal_map
 #endif
 
+
+// event_signal_map 就是个数组
 /* Used to map signal numbers to a list of events.  If EVMAP_USE_HT is not
    defined, this structure is also used as event_io_map, which maps fds to a
    list of events.
@@ -205,9 +207,17 @@ struct event_once {
 	void *arg;
 };
 
+
+/**
+ * 事件调度器，该结构体会对所有的事件进行调度，调度单元是 struct event
+ * 
+*/
 struct event_base {
-	/** Function pointers and other data to describe this event_base's
-	 * backend. */
+	/** 
+	 * eventop 定义了一组操作，包括事件的初始化，注册，删除，分发等操作。
+	 * 对于不同系统的IO复用接口，都必须提供上述的操作函数，然后将各个操作系统的API抽象成一个 eventop
+	 * evsel 是对IO操作的封装
+	 *  */
 	const struct eventop *evsel;
 	/** Pointer to backend-specific data. */
 	void *evbase;
@@ -216,8 +226,9 @@ struct event_base {
 	 * by the O(1) backends. */
 	struct event_changelist changelist;
 
-	/** Function pointers used to describe the backend that this event_base
-	 * uses for signals */
+	/**
+	 * 与 evsel evsigsel 是对 signal 的封装
+	 * */
 	const struct eventop *evsigsel;
 	/** Data to implement the common signal handler code. */
 	struct evsig_info sig;
@@ -235,6 +246,10 @@ struct event_base {
 	/** Maximum number of total events active in this event_base */
 	int event_count_active_max;
 
+
+	/**
+	 * 下面三个字段用于控制 loop 的行为
+	*/
 	/** Set if we should terminate the loop once we're done processing
 	 * events. */
 	int event_gotterm;
@@ -278,9 +293,17 @@ struct event_base {
 	/** The total size of common_timeout_queues. */
 	int n_common_timeouts_allocated;
 
+	/** 
+	 * 这个字段只有 windows 上会用到，由于 windows 上的 fd 值比较大，这里需要用hash 映射成较小的值作为 map 的key
+	 * 看宏定义可以看到linux 下使用的就是 event_signal_map 结构
+	*/
 	/** Mapping from file descriptors to enabled (added) events */
 	struct event_io_map io;
 
+	/**
+	 * event_signal_map 实际上就是个数组，数组的下标是 fd, 数组元素是 struct evmap_io
+	 * 每个数组元素有一个事件链表，都保存了 fd 对应的所有事件，包括读/写/异常关闭
+	*/
 	/** Mapping from signal numbers to enabled (added) events. */
 	struct event_signal_map sigmap;
 

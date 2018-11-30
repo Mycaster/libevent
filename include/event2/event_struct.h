@@ -130,12 +130,10 @@ struct event_base;
 
 
 /**
- * 事件结构。
- * event关注的事件类型，它可以是以下3种类型：
- * I/O事件： EV_WRITE和EV_READ
- * 定时事件：EV_TIMEOUT
- * 信号：    EV_SIGNAL
- * 辅助选项：EV_PERSIST，表明是一个永久事件
+ * 事件结构。一般是作为队列节点 TAIL_ENTRY 放在 event_base 里。
+ * event关注的事件包括：I/O事件(EV_WRITE和EV_READ) 、定时事件(EV_TIMEOUT)、信号(EV_SIGNAL)
+ * 该结构体有1个TAIL_ENTRY ，2个LIST_ENTRY，分别对应不同的事件。
+ * 可以将这2个宏直接理解为链表中的一个Node
 */
 struct event {
 	/**
@@ -143,8 +141,8 @@ struct event {
 	 */
 	struct event_callback ev_evcallback;
 
-	/* 管理超时事件的双向链表 */
 	union {
+		/* 下一个超时事件所在的节点 */
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
 		int min_heap_idx;
 	} ev_timeout_pos;
@@ -160,13 +158,13 @@ struct event {
 
 	/* 只能是 io 事件或 signal 事件中的一种 */
 	union {
-		/* io 事件的双向链表 */
+		/* io 事件的双向链表节点 */
 		struct {
 			LIST_ENTRY (event) ev_io_next;
 			struct timeval ev_timeout;
 		} ev_io;
 
-		/* 信号事件的双向链表 */
+		/* 信号事件的双向链表节点 */
 		struct {
 			LIST_ENTRY (event) ev_signal_next;
 			short ev_ncalls;

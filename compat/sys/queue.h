@@ -269,18 +269,22 @@ struct {								\
 		(head)->sqh_last = &(head)->sqh_first;			\
 } while (0)
 
-/*
- * Tail queue definitions.
- */
+
+
+/**
+ * 双向链表 API
+*/
+/* 定义双向链表的头节点的宏 */
 #define TAILQ_HEAD(name, type)						\
 struct name {								\
 	struct type *tqh_first;	/* first element */			\
 	struct type **tqh_last;	/* addr of last next element */		\
 }
-
+/* 初始化双向链表的头节点 */
 #define TAILQ_HEAD_INITIALIZER(head)					\
 	{ NULL, &(head).tqh_first }
 
+/* 匿名结构体，这里用于表示双向链表中的一个节点 */
 #define TAILQ_ENTRY(type)						\
 struct {								\
 	struct type *tqe_next;	/* next element */			\
@@ -372,8 +376,10 @@ struct {								\
 	*(elm2)->field.tqe_prev = (elm2);				\
 } while (0)
 
+
+
 /*
- * Circular queue definitions.
+ * 循环队列 API
  */
 #define CIRCLEQ_HEAD(name, type)					\
 struct name {								\

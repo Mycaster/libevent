@@ -267,6 +267,7 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 {
 	const struct eventop *evsel = base->evsel;
 	struct event_io_map *io = &base->io;
+	/* fd 对应的一系列事件 */
 	struct evmap_io *ctx = NULL;
 	int nread, nwrite, nclose, retval = 0;
 	short res = 0, old = 0;
@@ -277,12 +278,21 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	if (fd < 0)
 		return 0;
 
+	//如果 map 容量不够，扩容 event_signal_map 
 #ifndef EVMAP_USE_HT
 	if (fd >= io->nentries) {
 		if (evmap_make_space(io, fd, sizeof(struct evmap_io *)) == -1)
 			return (-1);
 	}
 #endif
+	/**
+	 * 由于POISX 下 event_io_map 和 event_signal_map 一样，就是个数组，所以这里是根据数组下标(fd)去寻址的操作。
+	 * 如果不存在，就用自定义的初始化函数新增一个节点 evmap_io，并加入到map中
+	 * fd 是 map 的 key (其实是 数组的 index )
+	 * evmap_io 是待插入 map 中的节点成员类型
+	 * evmap_io_init 是初始化这个成员的函数
+	 * ctx 是最终返回的map中的value (其实是数组元素)
+	 * */
 	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init,
 						 evsel->fdinfo_len);
 
@@ -290,6 +300,7 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	nwrite = ctx->nwrite;
 	nclose = ctx->nclose;
 
+	//原先的事件类型
 	if (nread)
 		old |= EV_READ;
 	if (nwrite)
@@ -327,6 +338,7 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 		/* XXX(niels): we cannot mix edge-triggered and
 		 * level-triggered, we should probably assert on
 		 * this. */
+		//这一步的 add 实际上是调用不同的操作系统对应的事件注册函数，比如 select 就对应 FD_SET(), epoll 对应 epoll_ctnls() 等
 		if (evsel->add(base, ev->ev_fd,
 			old, (ev->ev_events & EV_ET) | res, extra) == -1)
 			return (-1);
@@ -336,6 +348,7 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	ctx->nread = (ev_uint16_t) nread;
 	ctx->nwrite = (ev_uint16_t) nwrite;
 	ctx->nclose = (ev_uint16_t) nclose;
+	//将这个事件节点 ev 加入到 ctx 的事件链表中去
 	LIST_INSERT_HEAD(&ctx->events, ev, ev_io_next);
 
 	return (retval);
