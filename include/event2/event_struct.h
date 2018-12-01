@@ -150,21 +150,28 @@ struct event {
 	/* fd(IO事件) 或 信号值(signal事件) */
 	evutil_socket_t ev_fd;
 
+	//监听事件的类型 READ/WRITE/EVTIMEOUT之类
 	short ev_events;
 	short ev_res;		/* result passed to event callback */
  
 	/* 关联的 event_base */
 	struct event_base *ev_base;
 
-	/* 只能是 io 事件或 signal 事件中的一种 */
+	/**
+	 * 只能是 io 事件或 signal 事件中的一种, 所以这里用 union 可以节省内存
+	 * 无论是信号还是IO，都有一个TAILQ_ENTRY的队列。它用于这样的情景:
+	 * 用户对同一个fd调用event_new多次，并且都使用了不同的回调函数。 
+	 * 每次调用event_new都会产生一个event*。这个xxx_next成员就是把这些
+	 * event连接起来的。
+	*/
 	union {
-		/* io 事件的双向链表节点 */
+		/* io事件节点, 该节点属于双向链表节点 */
 		struct {
 			LIST_ENTRY (event) ev_io_next;
 			struct timeval ev_timeout;
 		} ev_io;
 
-		/* 信号事件的双向链表节点 */
+		/* signal事件节点, 该节点属于双向链表节点 */
 		struct {
 			LIST_ENTRY (event) ev_signal_next;
 			short ev_ncalls;
@@ -173,7 +180,7 @@ struct event {
 		} ev_signal;
 	} ev_;
 
-
+	//用于定时器,指定定时器的超时值
 	struct timeval ev_timeout;
 };
 

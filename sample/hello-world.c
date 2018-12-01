@@ -43,10 +43,6 @@ main(int argc, char **argv)
 	struct event *signal_event;
 
 	struct sockaddr_in sin;
-#ifdef _WIN32
-	WSADATA wsa_data;
-	WSAStartup(0x0201, &wsa_data);
-#endif
 
 	base = event_base_new();
 	if (!base) {
@@ -58,6 +54,7 @@ main(int argc, char **argv)
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(PORT);
 
+	//监听某个端口，并将监听事件加入 event_base 中
 	listener = evconnlistener_new_bind(base, listener_cb, (void *)base,
 	    LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
 	    (struct sockaddr*)&sin,

@@ -2006,6 +2006,10 @@ event_base_loop(struct event_base *base, int flags)
 
 		clear_time_cache(base);
 
+		/**
+		 * 调用OS提供的的多路IO复用函数,比如 epoll封装的 dispatch
+		 * 这个循环里如果有可以处理的事件，会放到 event_base的激活链表中，真正对事件的处理是在下面的 event_process_active
+		 * */
 		res = evsel->dispatch(base, tv_p);
 
 		if (res == -1) {
@@ -2159,6 +2163,7 @@ event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, shor
 	ev->ev_ncalls = 0;
 	ev->ev_pncalls = NULL;
 
+	//如果这个event是用来监听一个信号的，那么就不能让这个event监听读或者写事件,原因是其与信号event的实现方法相抵触
 	if (events & EV_SIGNAL) {
 		if ((events & (EV_READ|EV_WRITE|EV_CLOSED)) != 0) {
 			event_warnx("%s: EV_SIGNAL is not compatible with "
@@ -2677,10 +2682,13 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	}
 #endif
 
+	//根据不同的事件加入不同的 map 种
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE|EVLIST_ACTIVE_LATER))) {
+		//读/写/关闭事件加入 IO
 		if (ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED))
 			res = evmap_io_add_(base, ev->ev_fd, ev);
+		//信号事件加入 signal 
 		else if (ev->ev_events & EV_SIGNAL)
 			res = evmap_signal_add_(base, (int)ev->ev_fd, ev);
 		if (res != -1)
@@ -3057,7 +3065,7 @@ event_callback_activate_nolock_(struct event_base *base,
 	case 0:
 		break;
 	}
-
+	//将ev插入到激活队列
 	event_queue_insert_active(base, evcb);
 
 	if (EVBASE_NEED_NOTIFY(base))

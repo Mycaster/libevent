@@ -465,6 +465,9 @@ epoll_nochangelist_del(struct event_base *base, evutil_socket_t fd,
 	return epoll_apply_one_change(base, base->evbase, &ch);
 }
 
+/**
+ * 在事件处理的主循环中，负责将监听到的事件，加入到 event_base 的激活事件链表中去
+ * */
 static int
 epoll_dispatch(struct event_base *base, struct timeval *tv)
 {
@@ -514,6 +517,13 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 
+	/**
+	 * epoll 原生API函数，等待事件到来，
+	 * timeout为-1 表示不超时，始终阻塞在调用中等待事件到来
+	 * timeout为0表示查询一次是否有事件即立刻返回
+	 * timeout>0表示等待指定的时间等待时间到来，超时返回调用
+	 * res 返回收到的事件
+	 * */
 	res = epoll_wait(epollop->epfd, events, epollop->nevents, timeout);
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
@@ -530,6 +540,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 	event_debug(("%s: epoll_wait reports %d", __func__, res));
 	EVUTIL_ASSERT(res <= epollop->nevents);
 
+	//拿到事件之后
 	for (i = 0; i < res; i++) {
 		int what = events[i].events;
 		short ev = 0;
@@ -538,6 +549,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 			continue;
 #endif
 
+		/**如果fd发生错误，就当作读和写事件。之后调用read或者write时，就能得知具体是什么错误了。这里的作用是通知到上层。*/
 		if (what & (EPOLLHUP|EPOLLERR)) {
 			ev = EV_READ | EV_WRITE;
 		} else {
@@ -552,6 +564,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 		if (!ev)
 			continue;
 
+		//把这个ev放到激活队列中
 		evmap_io_active_(base, events[i].data.fd, ev | EV_ET);
 	}
 

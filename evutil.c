@@ -2553,10 +2553,13 @@ evutil_socket_(int domain, int type, int protocol)
 	else if ((type & (SOCK_NONBLOCK|SOCK_CLOEXEC)) == 0)
 		return -1;
 #endif
+//先去掉非阻塞的标记位
 #define SOCKET_TYPE_MASK (~(EVUTIL_SOCK_NONBLOCK|EVUTIL_SOCK_CLOEXEC))
 	r = socket(domain, type & SOCKET_TYPE_MASK, protocol);
 	if (r < 0)
 		return -1;
+
+	//设置为非阻塞
 	if (type & EVUTIL_SOCK_NONBLOCK) {
 		if (evutil_fast_socket_nonblocking(r) < 0) {
 			evutil_closesocket(r);

@@ -169,6 +169,8 @@ evconnlistener_new(struct event_base *base,
 	}
 #endif
 
+	//这里由于是非阻塞的，listen 之后立刻就返回了，将 listen 的 fd 通过 epoll_ctl() 加入监听中
+	// listen返回之后，立刻进入 epoll_wait() 的循环中，如果有连接过来，就在 epoll_wait 返回的 fd 中处理
 	if (backlog > 0) {
 		if (listen(fd, backlog) < 0)
 			return NULL;
@@ -223,6 +225,7 @@ evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb,
 	if (flags & LEV_OPT_CLOSE_ON_EXEC)
 		socktype |= EVUTIL_SOCK_CLOEXEC;
 
+	//1. fd = socket();
 	fd = evutil_socket_(family, socktype, 0);
 	if (fd == -1)
 		return NULL;
@@ -250,11 +253,13 @@ evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb,
 			goto err;
 	}
 
+	//2. bind(fd);
 	if (sa) {
 		if (bind(fd, sa, socklen)<0)
 			goto err;
 	}
 
+	//3. listen(fd);
 	listener = evconnlistener_new(base, cb, ptr, flags, backlog, fd);
 	if (!listener)
 		goto err;

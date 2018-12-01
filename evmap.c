@@ -296,6 +296,12 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init,
 						 evsel->fdinfo_len);
 
+	/**
+	 * 同一个fd可以调用 event_new, event_add 多次。
+	 * nread、nwrite就是记录有多少次。如果每次event_new的回调函数都不一样，
+	 * 那么当fd有可读或者可写时，这些回调函数都是会触发的。
+	 * 对一个fd不能event_new、event_add太多次的。后面会进行判断
+	*/
 	nread = ctx->nread;
 	nwrite = ctx->nwrite;
 	nclose = ctx->nclose;
@@ -308,14 +314,20 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	if (nclose)
 		old |= EV_CLOSED;
 
+	/**
+	 * res 判断是否为1是记录是不是第一次。如果是第一次，那么就说明该fd还没被加入到多路IO复用中。
+	 * 即还没被加入到像select、epoll这些函数中。那么就要加入。这个在后面可以看到
+	 * */
 	if (ev->ev_events & EV_READ) {
 		if (++nread == 1)
 			res |= EV_READ;
 	}
+	//写事件加一
 	if (ev->ev_events & EV_WRITE) {
 		if (++nwrite == 1)
 			res |= EV_WRITE;
 	}
+	//关闭事件加一
 	if (ev->ev_events & EV_CLOSED) {
 		if (++nclose == 1)
 			res |= EV_CLOSED;
@@ -333,18 +345,20 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 		return -1;
 	}
 
+	//res 不为 0 表示是第一次加注册事件，此时要将fd 加入到IO复用中
 	if (res) {
 		void *extra = ((char*)ctx) + sizeof(struct evmap_io);
 		/* XXX(niels): we cannot mix edge-triggered and
 		 * level-triggered, we should probably assert on
 		 * this. */
-		//这一步的 add 实际上是调用不同的操作系统对应的事件注册函数，比如 select 就对应 FD_SET(), epoll 对应 epoll_ctnls() 等
+		//这一步的 add 实际上是调用不同的操作系统对应的事件注册函数，比如 epoll 对应 epoll_ctls() 等
 		if (evsel->add(base, ev->ev_fd,
 			old, (ev->ev_events & EV_ET) | res, extra) == -1)
 			return (-1);
 		retval = 1;
 	}
 
+	//更新事件注册的次数
 	ctx->nread = (ev_uint16_t) nread;
 	ctx->nwrite = (ev_uint16_t) nwrite;
 	ctx->nclose = (ev_uint16_t) nclose;
@@ -422,6 +436,7 @@ evmap_io_del_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	return (retval);
 }
 
+//将IO事件加入到激活队列中
 void
 evmap_io_active_(struct event_base *base, evutil_socket_t fd, short events)
 {
@@ -433,11 +448,18 @@ evmap_io_active_(struct event_base *base, evutil_socket_t fd, short events)
 	if (fd < 0 || fd >= io->nentries)
 		return;
 #endif
+	//根据fd 获取对应的事件链表
 	GET_IO_SLOT(ctx, io, fd, evmap_io);
 
 	if (NULL == ctx)
 		return;
+	//遍历这个队列。将所有与fd相关联的event结构体都处理一遍
 	LIST_FOREACH(ev, &ctx->events, ev_io_next) {
+		/**
+		 * ev->ev_events 是注册事件，也就是用户感兴趣的事件，
+		 * events 时epoll 返回的监听到的事件
+		 * 如果有重合(两个都为1), 则表示监听到了感兴趣的事件
+		 * */
 		if (ev->ev_events & events)
 			event_active_nolock_(ev, ev->ev_events & events, 1);
 	}
