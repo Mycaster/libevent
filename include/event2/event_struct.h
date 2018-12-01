@@ -147,7 +147,7 @@ struct event {
 		int min_heap_idx;
 	} ev_timeout_pos;
 
-	/* 对于 IO 事件，ev_fd是绑定的描述符，对于 signal 事件，ev_fd 是信号 */
+	/* fd(IO事件) 或 信号值(signal事件) */
 	evutil_socket_t ev_fd;
 
 	short ev_events;

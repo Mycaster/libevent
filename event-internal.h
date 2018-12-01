@@ -82,9 +82,12 @@ extern "C" {
 #define EV_CLOSURE_EVENT_FINALIZE_FREE 6
 /** @} */
 
-/** Structure to define the backend of a given event_base. */
+/** 对不同的平台上各个 IO 多路复用接口的封装 
+ * 该结构体相当于一个抽象的基类，不同平台依据这个基类去实现各自的封装
+ * 具体的封装分别见 select.c/epoll.c/
+*/
 struct eventop {
-	/** The name of this backend. */
+	/** 多路IO复用函数的名字，比如 epoll/select 等 */
 	const char *name;
 	/** Function to set up an event_base to use this backend.  It should
 	 * create a new structure holding whatever information is needed to
@@ -213,13 +216,16 @@ struct event_once {
  * 
 */
 struct event_base {
-	/** 
-	 * eventop 定义了一组操作，包括事件的初始化，注册，删除，分发等操作。
-	 * 对于不同系统的IO复用接口，都必须提供上述的操作函数，然后将各个操作系统的API抽象成一个 eventop
-	 * evsel 是对IO操作的封装
+	/**
+	 * evsel 是对IO操作的封装。
+	 * eventop 结构体定义了一组操作，包括事件的初始化，注册，删除，分发等操作。
+	 * 对于不同系统的IO复用接口，都必须提供上述的操作函数，这样不同系统的IO多路复用API就可以抽象成一个 eventop
+	 * 
+	 * 由于不同的多路IO复用函数需要使用不同格式的数据，所以每一个多路IO复用函数都有专门的结构体
+	 * evbase 即指向这些不同的结构体。
+	 * 以 epoll 为例，evbase 指向 struct epollop, 里面封装了与 epoll 操作相关的所有数据
 	 *  */
 	const struct eventop *evsel;
-	/** Pointer to backend-specific data. */
 	void *evbase;
 
 	/** List of changes to tell backend about at next dispatch.  Only used
@@ -227,7 +233,7 @@ struct event_base {
 	struct event_changelist changelist;
 
 	/**
-	 * 与 evsel evsigsel 是对 signal 的封装
+	 * 与 evsel 一样，evsigsel 是对 signal 的封装
 	 * */
 	const struct eventop *evsigsel;
 	/** Data to implement the common signal handler code. */

@@ -27,7 +27,7 @@
 #include "event2/event-config.h"
 #include "evconfig-private.h"
 
-#ifdef EVENT__HAVE_EPOLL
+#ifndef EVENT__HAVE_EPOLL
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -83,7 +83,32 @@
 #define USING_TIMERFD
 #endif
 
+/**
+ * libevent 对 epoll API 的封装
+*/
 struct epollop {
+	/**
+	 * 系统原生的 epoll 结构体
+	 *  typedef union epoll_data {
+	 * 		void *ptr;
+	 * 		int fd;
+	 * 		__uint32_t u32;
+	 * 		__uint64_t u64;
+	 * 	} epoll_data_t;
+	 * 
+	 *  struct epoll_event {
+			//events可以是以下几个宏的集合：
+				//EPOLLIN ：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
+				//EPOLLOUT：表示对应的文件描述符可以写；
+				//EPOLLPRI：表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
+				//EPOLLERR：表示对应的文件描述符发生错误；
+				//EPOLLHUP：表示对应的文件描述符被挂断；
+				//EPOLLET： 将EPOLL设为边缘触发(Edge Triggered)模式，这是相对于水平触发(Level Triggered)来说的。
+				//EPOLLONESHOT：只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
+	 *		__uint32_t events; // Epoll events 
+	 *		epoll_data_t data; // User data variable 
+	 *  };
+	*/
 	struct epoll_event *events;
 	int nevents;
 	int epfd;
@@ -114,6 +139,9 @@ static int epoll_nochangelist_add(struct event_base *base, evutil_socket_t fd,
 static int epoll_nochangelist_del(struct event_base *base, evutil_socket_t fd,
     short old, short events, void *p);
 
+/**
+ * 基于 eventop 结构体对 epoll API 的封装
+*/
 const struct eventop epollops = {
 	"epoll",
 	epoll_init,
@@ -143,6 +171,7 @@ epoll_init(struct event_base *base)
 	int epfd = -1;
 	struct epollop *epollop;
 
+//尝试使用新的 epoll_create 接口
 #ifdef EVENT__HAVE_EPOLL_CREATE1
 	/* First, try the shiny new epoll_create1 interface, if we have it. */
 	epfd = epoll_create1(EPOLL_CLOEXEC);
@@ -150,6 +179,12 @@ epoll_init(struct event_base *base)
 	if (epfd == -1) {
 		/* Initialize the kernel queue using the old interface.  (The
 		size field is ignored   since 2.6.8.) */
+		/**
+		 * 创建一个epoll的句柄，size用来告诉内核这个监听的数目一共有多大。 
+		 * 这个参数不同于select()中的第一个参数，给出最大监听的fd+1的值。
+		 * 需要注意的是，当创建好epoll句柄后，它就是会占用一个fd值，在linux下如果查看/proc/进程id/fd/，是能够看到这个fd的，
+		 * 所以在使用完epoll后，必须调用close()关闭，否则可能导致fd被耗尽。 
+		*/
 		if ((epfd = epoll_create(32000)) == -1) {
 			if (errno != ENOSYS)
 				event_warn("epoll_create");
@@ -158,6 +193,7 @@ epoll_init(struct event_base *base)
 		evutil_make_socket_closeonexec(epfd);
 	}
 
+	//给 epollop 分配空间
 	if (!(epollop = mm_calloc(1, sizeof(struct epollop)))) {
 		close(epfd);
 		return (NULL);
@@ -165,7 +201,7 @@ epoll_init(struct event_base *base)
 
 	epollop->epfd = epfd;
 
-	/* Initialize fields */
+	/* 分配空间，初始化事件数组 */
 	epollop->events = mm_calloc(INITIAL_NEVENT, sizeof(struct epoll_event));
 	if (epollop->events == NULL) {
 		mm_free(epollop);
@@ -263,6 +299,11 @@ epoll_op_to_string(int op)
 	ch->close_change,                          \
 	change_to_string(ch->close_change)
 
+
+
+/**
+ * 调用 epoll_ctl() 修改事件
+*/
 static int
 epoll_apply_one_change(struct event_base *base,
     struct epollop *epollop,
@@ -287,11 +328,22 @@ epoll_apply_one_change(struct event_base *base,
 	memset(&epev, 0, sizeof(epev));
 	epev.data.fd = ch->fd;
 	epev.events = events;
+	/**
+	 * epoll的事件注册函数，它不同与select()是在监听事件时告诉内核要监听什么类型的事件，而是在这里先注册要监听的事件类型。
+	 * 第一个参数 epfd 是epoll_create()的返回值，
+	 * 第二个参数表示动作，用三个宏来表示：
+	 * 		EPOLL_CTL_ADD: 注册新的fd到epfd中；
+	 * 		EPOLL_CTL_MOD: 修改已经注册的fd的监听事件；
+	 * 		EPOLL_CTL_DEL: 从epfd中删除一个fd；
+	 * 第三个参数是需要监听的fd
+	 * 第四个参数是告诉内核需要监听什么事，
+	*/
 	if (epoll_ctl(epollop->epfd, op, ch->fd, &epev) == 0) {
 		event_debug((PRINT_CHANGES(op, epev.events, ch, "okay")));
 		return 0;
 	}
 
+	//处理各个注册操作失败的情况
 	switch (op) {
 	case EPOLL_CTL_MOD:
 		if (errno == ENOENT) {
